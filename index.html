@@ -68,6 +68,15 @@
     color:rgba(120,90,150,.55);font-size:12px;letter-spacing:1px;
     opacity:0;transition:opacity 1s ease;}
   #growbadge.show{opacity:1;}
+
+  /* ---- mobile: clean single-screen heart, no editor panel ---- */
+  @media (max-width:820px){
+    #editor{display:none;}
+    #growbadge{top:auto;bottom:2%;left:50%;transform:translateX(-50%);text-align:center;
+      color:rgba(200,170,230,.45);font-size:11px;}
+    #footer{font-size:12px;color:rgba(255,170,200,.42);}
+    #canvas{-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+  }
 </style>
 </head>
 <body>
@@ -109,10 +118,21 @@ function sizeStage(){
   canvas.style.width=W+'px'; canvas.style.height=H+'px';
   ctx.setTransform(DPR,0,0,DPR,0,0);
 }
-sizeStage(); window.addEventListener('resize',sizeStage);
+sizeStage();
+let rszTimer=0;
+window.addEventListener('resize',()=>{
+  sizeStage();
+  clearTimeout(rszTimer);
+  rszTimer=setTimeout(()=>{
+    const lc=loopCount();
+    buildParticles(lc);
+    for(const p of particles){p.reset();}
+  },320);
+});
 
-/* heart sits on the LEFT; coding editor is on the RIGHT */
-const CX = () => W*0.30;
+/* mobile (<=820px) -> centered heart, no editor; desktop -> heart LEFT */
+const isNarrow=()=>W<=820;
+const CX = () => isNarrow()? W*0.50 : W*0.30;
 const CY = () => H*0.50;
 function heartPt(t, sc){
   const x = 16*Math.pow(Math.sin(t),3);
@@ -123,7 +143,8 @@ function heartGrow(lc){
   return 1 + Math.min(0.55, lc*0.05);
 }
 function heartScale(lc){
-  return Math.min(W,H)*0.016*heartGrow(lc);
+  const bonus=isNarrow()? (W<H?1.25:1.05) : 1;
+  return Math.min(W,H)*0.016*bonus*heartGrow(lc);
 }
 
 const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
