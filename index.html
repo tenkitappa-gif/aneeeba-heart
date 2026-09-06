@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aneeba &#9829; &middot; Neon Heart</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden;
+    font-family:'Consolas','Menlo',monospace;}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  #stage{
+    position:relative;width:min(1720px,100vw);height:min(950px,100vh);
+    background:#000;border-radius:14px;overflow:hidden;
+    box-shadow:0 0 80px rgba(255,60,130,.16),0 0 8px rgba(255,255,255,.06);
+  }
+  #canvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
+
+  /* editor panel on the RIGHT (original layout), heart lives on the LEFT */
+  #editor{
+    position:absolute;top:1.6%;bottom:1.6%;right:1.5%;
+    width:36%;min-width:380px;
+    background:rgba(12,14,22,.96);border:1px solid rgba(120,140,190,.25);
+    border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,.6);
+    overflow:hidden;display:flex;flex-direction:column;
+    opacity:0;transform:translateX(-24px);
+    transition:opacity 1s ease,transform 1s cubic-bezier(.2,.7,.2,1);
+  }
+  #editor.show{opacity:1;transform:translateX(0);}
+
+  #ed-head{height:38px;background:#171a24;display:flex;align-items:center;gap:7px;
+    padding:0 12px;border-bottom:1px solid rgba(120,140,190,.18);flex:0 0 auto;}
+  .dot{width:12px;height:12px;border-radius:50%;}
+  .d1{background:#ff5f57;}.d2{background:#febc2e;}.d3{background:#28c840;}
+  #ed-title{flex:1;text-align:center;color:#9aa3b2;font-size:12px;letter-spacing:.3px;}
+  #ed-run{font-size:11px;color:#37c96a;display:flex;align-items:center;gap:6px;}
+  #ed-run::before{content:'';width:7px;height:7px;border-radius:50%;background:#37c96a;
+    animation:blink 1.2s steps(2) infinite;}
+  @keyframes blink{50%{opacity:.15;}}
+
+  #ed-body{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+  #ed-linewrap{flex:1;overflow:hidden;padding:10px 6px;}
+  #ed-lines{font-size:12.5px;line-height:16.5px;color:#c7cedb;}
+  .ln{display:flex;white-space:pre;}
+  .ln .gutter{width:40px;text-align:right;padding-right:12px;color:#555d6d;
+    user-select:none;flex:0 0 auto;}
+  .ln .txt{flex:1;}
+  .ln.active .txt{background:rgba(70,120,200,.12);}
+  .cursor{display:inline-block;width:2px;height:14px;background:#8fe3ff;
+    vertical-align:text-bottom;animation:blinkC .9s steps(2) infinite;}
+  @keyframes blinkC{50%{opacity:0;}}
+
+  .kw{color:#c678dd;} .str{color:#e5c07b;} .num{color:#d19a66;}
+  .fun{color:#61afef;} .mod{color:#56dbc0;} .com{color:#5c6370;font-style:italic;}
+
+  #ed-console{flex:0 0 auto;background:#0a0d16;border-top:1px solid rgba(120,140,190,.15);
+    padding:10px 14px;font-size:11.5px;color:#9aa3b2;min-height:64px;}
+  #ed-console .hdr{color:#3d4350;font-size:10px;margin-bottom:6px;letter-spacing:.5px;}
+  .conline{color:#5c6370;}
+  .conline.g{color:#37c96a;}
+
+  #footer{position:absolute;left:2.5%;bottom:2%;text-align:left;
+    color:rgba(255,170,200,.5);font-size:13px;letter-spacing:1px;
+    font-family:'Georgia',serif;font-style:italic;
+    opacity:0;transition:opacity 1.2s ease;}
+  #footer.show{opacity:1;}
+  #growbadge{position:absolute;left:2.5%;top:2%;text-align:left;
+    color:rgba(120,90,150,.55);font-size:12px;letter-spacing:1px;
+    opacity:0;transition:opacity 1s ease;}
+  #growbadge.show{opacity:1;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="canvas"></canvas>
+    <div id="growbadge">growing heart</div>
+    <div id="editor">
+      <div id="ed-head">
+        <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span>
+        <div id="ed-title">aneeba_heart.py &mdash; neon</div>
+        <div id="ed-run">running</div>
+      </div>
+      <div id="ed-body">
+        <div id="ed-linewrap">
+          <div id="ed-lines"></div>
+        </div>
+        <div id="ed-console">
+          <div class="hdr">PYTHON &bull; TURTLE &mdash; OUTPUT</div>
+          <div id="consol"></div>
+        </div>
+      </div>
+    </div>
+    <div id="footer">Aneeba &#9829; &nbsp;&middot;&nbsp; forever</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const DPR = Math.min(2, window.devicePixelRatio||1);
+let W=0,H=0;
+function sizeStage(){
+  const st = document.getElementById('stage');
+  const s = st.getBoundingClientRect();
+  W=s.width; H=s.height;
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+sizeStage(); window.addEventListener('resize',sizeStage);
+
+/* heart sits on the LEFT; coding editor is on the RIGHT */
+const CX = () => W*0.30;
+const CY = () => H*0.50;
+function heartPt(t, sc){
+  const x = 16*Math.pow(Math.sin(t),3);
+  const y = 13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);
+  return [x*sc, -y*sc];            /* -y  ->  upright on canvas */
+}
+function heartGrow(lc){
+  return 1 + Math.min(0.55, lc*0.05);
+}
+function heartScale(lc){
+  return Math.min(W,H)*0.016*heartGrow(lc);
+}
+
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const clamp01=(v)=>clamp(v,0,1);
+const smooth=(a)=>{a=clamp01(a);return a*a*(3-2*a);};
+const easeOutCubic=(x)=>{x=clamp01(x);return 1-Math.pow(1-x,3);};
+const easeOutBack=(x)=>{x=clamp01(x);const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2);};
+
+/* ---- global timing ---- */
+const LOAD_DUR=2.2, LOOP=20.0;
+const FLY=2.6, HEART=6.6, TITLE_T=7.4, BURST_T=6.95, LEAVE=13.5, DARK=16.5;
+const SIGN0=17.5, SIGN1=19.0;
+let t0=performance.now();
+function now(){return (performance.now()-t0)/1000;}
+function scene(){return Math.max(0, now()-LOAD_DUR);}
+function ttNow(){return scene()%LOOP;}
+function loopCount(){return Math.floor(scene()/LOOP);}
+
+function beat(tt){
+  const c=tt-HEART; if(c<0||c>5.6) return 1;
+  const t=c%1.16; if(t>0.44) return 1;
+  const p=0.85*Math.exp(-Math.pow((t-0.11)/0.048,2));
+  const p2=0.50*Math.exp(-Math.pow((t-0.27)/0.050,2));
+  return 1+0.058*(p+p2);
+}
+function gFade(tt){
+  if(tt<1.6) return smooth(tt/1.6);
+  if(tt<LEAVE) return 1;
+  if(tt<DARK){const p=(tt-LEAVE)/(DARK-LEAVE);return 1-p*p;}
+  if(tt<DARK+1.2) return 0.08*(1-(tt-DARK)/1.2);
+  return 0;
+}
+
+const PALETTE=[[255,41,92],[255,82,140],[255,140,191],[255,204,230],[255,250,255],
+               [243,72,153],[255,26,72],[230,115,217],[255,255,255]];
+const TEXTS=["Aneeba","Aneeba","\u2665","ANEEBA"];
+function genPts(count,sc){
+  const pts=[];
+  /* concentric scaled heart contours fill the interior with depth */
+  const rings=[[0.97,0.34],[0.82,0.24],[0.66,0.20],[0.50,0.16],[0.34,0.12],[0.18,0.08]];
+  const interior=Math.floor(count*0.60);
+  for(const [frac,w] of rings){
+    const n=Math.floor(interior*w);
+    for(let i=0;i<n;i++){
+      const t=2*Math.PI*i/n+(Math.random()*2-1)*0.05;
+      const [x,y]=heartPt(t,sc*frac);
+      const j=sc*frac*0.16;
+      pts.push([x+(Math.random()*2-1)*j, y+(Math.random()*2-1)*j, frac]);
+    }
+  }
+  /* crisp outline, almost no jitter, so the silhouette reads clearly */
+  const n=count-interior;
+  for(let i=0;i<n;i++){
+    const t=2*Math.PI*i/n+(Math.random()*2-1)*0.004;
+    const [x,y]=heartPt(t,sc);
+    const j=sc*0.03;
+    pts.push([x+(Math.random()*2-1)*j, y+(Math.random()*2-1)*j, 0.97]);
+  }
+  return pts;
+}
+
+/* kinds: word text, star sparkle, line dash */
+class Particle{
+  constructor(tx,ty,kind,frac){
+    this.tx=tx;this.ty=ty;
+    this.kind=kind;
+    this.text=TEXTS[(Math.random()*TEXTS.length)|0];
+    this.size=14+((Math.random()*6)|0);
+    this.rot=Math.random()*6.2832;
+    this.len=(7+Math.random()*10)*Math.min(1,W/1200);
+    this.col=PALETTE[(Math.random()*PALETTE.length)|0];
+    const blend=(1-frac)*0.55;            /* core glows lighter, rim stays hot pink */
+    this.col=[this.col[0]+(255-this.col[0])*blend,
+              this.col[1]+(255-this.col[1])*blend,
+              this.col[2]+(255-this.col[2])*blend];
+    if(Math.random()<0.10) this.col=[255,255,255];
+    this.bright=0.82+Math.random()*0.18;
+    this.seed=Math.random()*6.2832;
+    this.arrDelay=Math.random()*2.4;
+    this.arrDur=0.8+Math.random()*0.9;
+    this.leaveOff=Math.random()*0.5;
+    this.reset();
+  }
+  reset(){
+    this.sx=Math.random()*W*0.9-W*0.6;
+    this.sy=Math.random()*H-H*0.5;
+    this.cx=this.sx;this.cy=this.sy;
+    this.state="idle";this.start=0;this.e=0;
+  }
+  startFlight(nw,sc){
+    this.state="fly";this.start=nw;
+    const txS=CX()+this.tx*sc, tyS=CY()+this.ty*sc;
+    const dx=txS-this.sx,dy=tyS-this.sy;
+    const mx=(txS+this.sx)/2,my=(tyS+this.sy)/2;
+    const d=Math.hypot(dx,dy)+1e-6;
+    const pull=Math.min(d*0.30, 150*Math.min(1,W/1000));
+    this.ccx=mx+(-dy/d)*pull; this.ccy=my+(dx/d)*pull;
+  }
+  startLeave(nw){
+    this.state="leave";this.start=nw;
+    const ang=Math.atan2(this.ty,this.tx)+(Math.random()*2-1)*0.5;
+    const r=(560+Math.random()*180)*Math.min(1,W/1200);
+    this.exi=CX()+Math.cos(ang)*r; this.ey=CY()+Math.sin(ang)*r*0.9+(Math.random()*2-1)*30;
+    const dx=this.exi-this.cx,dy=this.ey-this.cy;
+    const mx=(this.exi+this.cx)/2,my=(this.ey+this.cy)/2;
+    const d=Math.hypot(dx,dy)+1e-6;
+    const pull=Math.min(d*0.18,90);
+    this.ccx=mx+(-dy/d)*pull; this.ccy=my+(dx/d)*pull;
+  }
+  update(nw,pulse,sc){
+    if(this.state==="idle"){
+      this.cx+=Math.sin(nw*0.7+this.seed)*0.25;
+      this.cy+=Math.cos(nw*0.9+this.seed*1.3)*0.22;
+    } else if(this.state==="fly"){
+      let k=(nw-this.start)/this.arrDur;
+      if(k>=1){k=1;this.state="land";}
+      const e=easeOutBack(k),u=1-e;this.e=e;
+      this.cx=u*u*this.sx+2*u*e*this.ccx+e*e*(CX()+this.tx*sc);
+      this.cy=u*u*this.sy+2*u*e*this.ccy+e*e*(CY()+this.ty*sc);
+    } else if(this.state==="land"){
+      this.e=1;
+      this.cx=(CX()+this.tx*sc)*pulse;
+      this.cy=(CY()+this.ty*sc)*pulse;
+    } else {
+      let k=(nw-this.start)/1.5; if(k>=1)k=1;
+      const e=easeOutCubic(k),u=1-e; this.e=1-e;
+      this.cx=u*u*(CX()+this.tx*sc)*pulse+2*u*e*this.ccx+e*e*this.exi;
+      this.cy=u*u*(CY()+this.ty*sc)*pulse+2*u*e*this.ccy+e*e*this.ey;
+    }
+  }
+  draw(nw,K,pulse,thick){
+    let fs,al;
+    if(this.state==="idle"){fs=9*thick;al=0.5;}
+    else if(this.state==="fly"){fs=(9+(this.size-9)*this.e)*thick;al=0.5+0.5*this.e;}
+    else if(this.state==="land"){fs=this.size*thick;al=this.bright;}
+    else {fs=this.size*this.e*thick;al=0.55*this.e;}
+    if(al<=0.02||fs<=4) return;
+    const shim=(this.state==="land")?(0.9+0.1*Math.sin(nw*3+this.seed)):1;
+    const m=this.bright*al*K*pulse*shim;
+    const col=`rgba(${this.col[0]},${this.col[1]},${this.col[2]},${Math.min(1,m)})`;
+    if(this.kind==="word"){
+      ctx.globalAlpha=1;
+      ctx.font='bold '+Math.round(fs)+'px Consolas,monospace';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillStyle=col;
+      ctx.fillText(this.text,this.cx,this.cy);
+    } else if(this.kind==="star"){
+      const rad=fs*1.1;
+      ctx.strokeStyle=col;ctx.lineWidth=2+0.9*(thick-1);
+      ctx.globalAlpha=Math.max(0,Math.min(1,m*1.2));
+      for(let i=0;i<4;i++){
+        const ang=this.rot+i*Math.PI/2;
+        ctx.beginPath();ctx.moveTo(this.cx,this.cy);
+        ctx.lineTo(this.cx+Math.cos(ang)*rad, this.cy+Math.sin(ang)*rad);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      for(let i=0;i<4;i++){
+        const ang=this.rot+Math.PI/4+i*Math.PI/2;
+        ctx.moveTo(this.cx+Math.cos(ang)*rad*0.35, this.cy+Math.sin(ang)*rad*0.35);
+        ctx.lineTo(this.cx+Math.cos(ang)*rad*0.8, this.cy+Math.sin(ang)*rad*0.8);
+      }
+      ctx.stroke();
+      ctx.beginPath();ctx.arc(this.cx,this.cy,1.4,0,6.2832);
+      ctx.fillStyle='#ffffff';ctx.fill();
+      ctx.globalAlpha=1;
+    } else if(this.kind==="dash"){
+      const L=this.len*thick;
+      ctx.strokeStyle=col;ctx.lineWidth=1.8+0.8*(thick-1);
+      ctx.globalAlpha=Math.max(0,Math.min(1,m*1.2));
+      ctx.beginPath();
+      ctx.moveTo(this.cx-Math.cos(this.rot)*L/2, this.cy-Math.sin(this.rot)*L/2);
+      ctx.lineTo(this.cx+Math.cos(this.rot)*L/2, this.cy+Math.sin(this.rot)*L/2);
+      ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+  }
+}
+
+function pickKind(){
+  const r=Math.random();
+  if(r<0.30) return "word";
+  if(r<0.72) return "star";
+  return "dash";
+}
+function particleCount(gr){
+  return Math.round(560 + 330*(gr-1)/0.55) + 20*((Math.random()*3)|0);
+}
+let heartPts=[]; const particles=[];
+function buildParticles(lc){
+  const sc=heartScale(lc);
+  const count=particleCount(heartGrow(lc));
+  heartPts=genPts(count,sc);
+  particles.length=0;
+  for(const [x,y,frac] of heartPts) particles.push(new Particle(x,y,pickKind(),frac));
+}
+buildParticles(0);
+
+/* ---- fx ---- */
+const sparkles=[],drifts=[],comets=[],orbiters=[],risers=[];
+const confetti=[]; let burstDone={};
+
+class Sparkle{
+  constructor(){this.reset();this.tw=2+Math.random()*6;this.ph=Math.random()*6.2832;}
+  reset(){
+    const ang=Math.random()*6.2832,r=90+Math.random()*Math.min(W,H)*0.5;
+    this.x=CX()+Math.cos(ang)*r; this.y=CY()+Math.sin(ang)*r*0.9;
+    this.vx=(Math.random()*2-1)*0.3; this.vy=(Math.random()*2-1)*0.3;
+    this.life=Math.random(); this.dl=0.004+Math.random()*0.016;
+    this.size=0.8+Math.random()*1.8;
+  }
+  update(){this.x+=this.vx;this.y+=this.vy;this.life-=this.dl;if(this.life<=0)this.reset();}
+  draw(K){
+    const a=Math.abs(Math.sin(now()*this.tw+this.ph))*this.life*K;
+    if(a<0.06)return;
+    ctx.globalAlpha=a;ctx.fillStyle='#ffe3ee';
+    ctx.beginPath();ctx.arc(this.x,this.y,this.size,0,6.2832);ctx.fill();
+  }
+}
+class Drift{
+  constructor(){this.reset();}
+  reset(){this.x=Math.random()*W*1.2-W*0.6;this.y=Math.random()*H*1.2-H*0.5;
+    this.vy=-0.35+Math.random()*0.4;this.vx=(Math.random()*2-1)*0.2;
+    this.size=0.5+Math.random();this.alpha=0.05+Math.random()*0.16;this.tw=1+Math.random()*4;}
+  update(){this.x+=this.vx;this.y+=this.vy;
+    if(this.y<-H*0.55){this.y=H*0.55;this.x=Math.random()*W*1.2-W*0.6;}
+    if(this.x<-W*0.6)this.x=W*0.6; if(this.x>W*0.6)this.x=-W*0.6;}
+  draw(K){const a=this.alpha*(0.5+0.5*Math.sin(now()*this.tw))*K;
+    if(a<0.01)return;ctx.globalAlpha=a;ctx.fillStyle='#ffeef4';
+    ctx.beginPath();ctx.arc(this.x,this.y,this.size,0,6.2832);ctx.fill();}
+}
+class Comet{
+  constructor(){this.respawn();}
+  respawn(){
+    const side=(Math.random()*4)|0;
+    if(side===0){this.x=-W*0.6;this.y=(Math.random()*2-1)*H*0.45;}
+    else if(side===1){this.x=W*0.9;this.y=(Math.random()*2-1)*H*0.45;}
+    else if(side===2){this.x=W*0.3+Math.random()*W*0.6;this.y=-H*0.48;}
+    else{this.x=W*0.3+Math.random()*W*0.6;this.y=H*0.48;}
+    const ang=Math.random()*6.2832,sp=2.5+Math.random()*3;
+    this.vx=Math.cos(ang)*sp; this.vy=Math.sin(ang)*sp*0.8;
+    this.life=0.7+Math.random()*0.7; this.trail=[];
+  }
+  update(){this.x+=this.vx;this.y+=this.vy;this.life-=0.016;
+    this.trail.push([this.x,this.y]); if(this.trail.length>14)this.trail.shift();
+    if(this.life<=0||Math.abs(this.x-W*0.6)>W*0.55||Math.abs(this.y)>H*0.5)this.respawn();}
+  draw(K){const n=this.trail.length;
+    for(let i=0;i<n;i++){const a=Math.pow(i/Math.max(1,n),1.6)*0.5*K;
+      ctx.globalAlpha=a;ctx.fillStyle='#ffd9ee';
+      ctx.beginPath();ctx.arc(this.trail[i][0],this.trail[i][1],1.6,0,6.2832);ctx.fill();}
+    ctx.globalAlpha=K;ctx.fillStyle='#ffe6f1';
+    ctx.beginPath();ctx.arc(this.x,this.y,2.5,0,6.2832);ctx.fill();}
+}
+class Orbiter{
+  constructor(){this.ang=Math.random()*6.2832;
+    this.speed=[0.42,0.55,-0.48,0.6,-0.62][(Math.random()*5)|0];
+    this.rad=Math.min(W,H)*(0.30+Math.random()*0.12);
+    this.size=10+((Math.random()*3)|0);
+    this.text=TEXTS[(Math.random()*TEXTS.length)|0];
+    this.col=PALETTE[(Math.random()*PALETTE.length)|0];this.trail=[];}
+  update(){this.ang+=this.speed*0.008;
+    this.x=CX()+Math.cos(this.ang)*this.rad;
+    this.y=CY()+Math.sin(this.ang+0.5)*this.rad*0.55;
+    this.trail.push([this.x,this.y]);if(this.trail.length>7)this.trail.shift();}
+  draw(K){const n=this.trail.length;
+    for(let i=0;i<n;i++){const a=(i/n)*0.35*K;ctx.globalAlpha=a;ctx.fillStyle='#ffd0e6';
+      ctx.beginPath();ctx.arc(this.trail[i][0],this.trail[i][1],1.6,0,6.2832);ctx.fill();}
+    ctx.globalAlpha=0.85*K;
+    ctx.font='bold '+this.size+'px Consolas,monospace';
+    ctx.fillStyle=`rgb(${this.col[0]},${this.col[1]},${this.col[2]})`;
+    ctx.textAlign='center';ctx.fillText(this.text,this.x,this.y-this.size*0.3);}
+}
+class Riser{   /* little hearts floating up */
+  constructor(){this.reset();}
+  reset(){
+    this.x=CX()+ (Math.random()*2-1)*Math.min(W,H)*0.5;
+    this.y=H*0.55+Math.random()*30;
+    this.vy=0.45+Math.random()*0.7;
+    this.size=8+Math.random()*14;
+    this.alpha=0.25+Math.random()*0.3;
+    this.sway=0.3+Math.random()*0.6;
+    this.ph=Math.random()*6.2832;
+  }
+  update(){this.y-=this.vy;this.x+=Math.sin(now()*this.sway+this.ph)*0.4;
+    if(this.y<-H*0.12)this.reset();}
+  draw(K){
+    const a=this.alpha*K*(0.6+0.4*Math.sin(now()*1.5+this.ph));
+    if(a<0.02)return;
+    ctx.globalAlpha=a;ctx.fillStyle='#ff7fb0';
+    ctx.font=this.size+'px Georgia,serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('\u2665',this.x,this.y);
+    ctx.globalAlpha=1;
+  }
+}
+for(let i=0;i<110;i++)sparkles.push(new Sparkle());
+for(let i=0;i<36;i++)drifts.push(new Drift());
+for(let i=0;i<3;i++)comets.push(new Comet());
+for(let i=0;i<5;i++)orbiters.push(new Orbiter());
+for(let i=0;i<6;i++)risers.push(new Riser());
+
+function spawnConfetti(){
+  for(let i=0;i<70;i++){
+    const ang=Math.random()*6.2832, sp=2.5+Math.random()*6;
+    confetti.push({
+      x:CX(), y:CY(), vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp-1.5,
+      g:0.06, life:1, len:6+Math.random()*8,
+      rot:Math.random()*6.2832, col:PALETTE[(Math.random()*PALETTE.length)|0]
+    });
+  }
+}
+function updateConfetti(K){
+  for(let i=confetti.length-1;i>=0;i--){
+    const c=confetti[i];
+    c.x+=c.vx; c.y+=c.vy; c.vy+=c.g; c.life-=0.018; c.rot+=0.12;
+    if(c.life<=0){confetti.splice(i,1);continue;}
+    const a=Math.min(1,c.life)*K;
+    const col=`rgba(${c.col[0]},${c.col[1]},${c.col[2]},${a})`;
+    ctx.strokeStyle=col;ctx.lineWidth=1.4;
+    ctx.beginPath();
+    ctx.moveTo(c.x-Math.cos(c.rot)*c.len/2, c.y-Math.sin(c.rot)*c.len/2);
+    ctx.lineTo(c.x+Math.cos(c.rot)*c.len/2, c.y+Math.sin(c.rot)*c.len/2);
+    ctx.stroke();
+    if(i%5===0){
+      ctx.fillStyle=col;
+      ctx.beginPath();ctx.arc(c.x,c.y,1.3,0,6.2832);ctx.fill();
+    }
+  }
+}
+
+/* ---- glow + bloom ---- */
+function drawGlow(K,tt,lc){
+  const pulse=beat(tt);
+  const sc=heartScale(lc);
+  const boost=K*(0.72+0.30*(pulse-1)/0.06);
+  const rings=[[1.03,80,3,[61,15,92]],
+               [1.14,68,2,[41,10,72]],
+               [1.26,54,1.5,[28,8,54]],
+               [1.42,40,1,[18,5,36]],
+               [1.62,28,0.8,[10,4,23]]];
+  for(const [mult,n,dot,col] of rings){
+    const sc2=sc*mult*pulse, step=2*Math.PI/n;
+    const m=boost*(1-(mult-1.03)*0.34);
+    ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${m})`;
+    for(let i=0;i<n;i++){
+      const au=i*step; const [x,y]=heartPt(au,sc2);
+      ctx.beginPath();ctx.arc(CX()+x,CY()+y,(dot/2),0,6.2832);ctx.fill();
+    }
+  }
+  const bl=K*(0.45+0.30*(pulse-1)/0.06);
+  ctx.fillStyle=`rgba(12,4,22,${bl})`;
+  for(let i=0;i<90;i++){
+    const t=2*Math.PI*i/90; const [x,y]=heartPt(t,sc*1.05*pulse);
+    for(const k of [1,-1]){
+      ctx.fillRect(CX()+x, CY()+y+k*sc*0.16, 1.5, 1.5);
+    }
+  }
+}
+
+/* rotating dashed orbit rings around the heart */
+function drawRings(K,tt,sc){
+  const pulse=beat(tt);
+  const a0=now()*0.5, a1=-now()*0.33;
+  for(const [rad,stepLen,alpha,count] of
+      [[18.2,0.5,0.16,70],[21.0,0.9,0.10,46]]){
+    const rx=sc*rad*pulse, ry=sc*rad*0.52*pulse;
+    for(let i=0;i<count;i++){
+      const pa=(i/count)*6.2832 + (stepLen>0.6?a1:a0);
+      if((i%stepLen)!==0) continue;
+      const bx=CX()+Math.cos(pa)*rx, by=CY()+Math.sin(pa)*ry;
+      const a=alpha*K*(0.4+0.6*Math.abs(Math.sin(now()*2+i)));
+      ctx.globalAlpha=a;
+      ctx.fillStyle='#ffc1d9';
+      ctx.beginPath();ctx.arc(bx,by,1.1,0,6.2832);ctx.fill();
+    }
+  }
+  ctx.globalAlpha=1;
+}
+
+/* big neon title above the heart */
+function drawTitle(tt,K,pulse,lc){
+  if(tt<TITLE_T) return;
+  const a=smooth((tt-TITLE_T)/0.7)*K;
+  if(a<=0.02) return;
+  const sc=heartScale(lc);
+  const pop=easeOutBack(Math.min(1,(tt-TITLE_T)/0.8));
+  const topY=CY()-sc*14-34;
+  const bob=(pulse-1)*9;
+  const fs=Math.min(W,H)*0.058*pop;
+  ctx.globalAlpha=Math.min(1,a);
+  ctx.font='bold '+Math.round(fs)+'px Georgia,serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(255,80,140,0.85)';
+  ctx.shadowBlur=34;
+  ctx.fillStyle='#ff9dc4';
+  ctx.fillText('ANEEBA', CX(), topY+bob);
+  ctx.shadowBlur=0;
+  ctx.font=Math.round(fs*0.36)+'px Georgia,serif';
+  ctx.fillStyle=`rgba(255,240,248,${0.85*a})`;
+  ctx.fillText('\u2014  \u2665 forever  \u2014', CX(), topY+fs*0.75+bob);
+  ctx.globalAlpha=1;
+}
+
+/* signature arc bottom-left */
+function drawSignature(tt){
+  if(tt<SIGN0) return;
+  let a=smooth((tt-SIGN0)/0.5);
+  if(tt>SIGN1) a*=(1-smooth((tt-SIGN1)/0.3));
+  const anch=clamp01((tt-SIGN0)/(SIGN1-SIGN0));
+  if(a<=0.01) return;
+  const x=CX()+Math.min(W,H)*0.1+anch*Math.min(W,H)*0.35;
+  const y=CY()+Math.min(W,H)*0.34-anch*Math.min(W,H)*0.18;
+  ctx.globalAlpha=a;
+  ctx.font='italic '+Math.round(Math.min(W,H)*0.034)+'px Georgia,serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle='#ff8fb3';
+  ctx.fillText('Aneeba \u2665 forever', x, y);
+  ctx.globalAlpha=1;
+}
+
+/* ---- simple loading screen ---- */
+function drawLoading(p){
+  ctx.clearRect(0,0,W,H);
+  const cx=W*0.5, cy=H*0.46;
+  const pop=easeOutBack(Math.min(1,p*2.2+0.06));
+  const fs2=Math.min(W,H)*0.075*(0.7+0.3*Math.sin(now()*3))*pop;
+  ctx.globalAlpha=1;
+  ctx.font='bold '+Math.round(fs2)+'px Georgia,serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(255,70,130,0.9)';ctx.shadowBlur=36;
+  ctx.fillStyle='#ff8ab5';
+  ctx.fillText('ANEEBA',cx,cy);
+  ctx.shadowBlur=0;
+  ctx.font=Math.round(fs2*0.5)+'px Georgia,serif';
+  ctx.fillStyle=`rgba(255,200,220,${0.55*p})`;
+  ctx.fillText('\u2665  your heart is loading  \u2665',cx,cy+fs2*0.95);
+
+  const pw=Math.min(W*0.24,260), x0=cx-pw/2, y0=cy+fs2*1.7;
+  ctx.globalAlpha=0.2;ctx.fillStyle='#3a3f50';
+  ctx.fillRect(x0,y0,pw,6);
+  ctx.globalAlpha=1;ctx.fillStyle='#ff6fa0';
+  ctx.fillRect(x0,y0,pw*p,6);
+  ctx.font='12px Consolas,monospace';
+  ctx.fillStyle='#9aa3b2';
+  ctx.fillText(Math.round(p*100)+'%',cx,y0+26);
+  ctx.globalAlpha=1;
+}
+
+/* ambient word wisps + small helper */
+function drawAmbient(tt,K){
+  if(tt<FLY) return;
+  const words=[["Aneeba",CX(),CY()-Math.min(W,H)*0.36,0.9],["\u2665",CX(),CY()+Math.min(W,H)*0.32,0.8],
+               ["Aneeba",CX()+Math.min(W,H)*0.3,CY()-Math.min(W,H)*0.32,0.6]];
+  for(const [w,x,y,wob] of words){
+    const a=Math.max(0,Math.sin((tt-FLY)*0.5+(w.length||1)))**1.4*0.05*K;
+    if(a<0.008) continue;
+    const rx=x+Math.sin(now()*0.6)*wob*10;
+    ctx.globalAlpha=a;
+    ctx.font='italic '+Math.round(Math.min(W,H)*0.05*(a>0.02?1.4:1))+'px Georgia,serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillStyle='#ff8fb5';
+    ctx.fillText(w,rx,y);
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ---- main draw ---- */
+function draw(nowt,tt,lc,K){
+  const pulse=beat(tt);
+  const gr=heartGrow(lc);
+  const sc=heartScale(lc);
+  ctx.clearRect(0,0,W,H);
+  ctx.globalAlpha=1;
+  ctx.globalCompositeOperation='lighter';
+
+  for(const d of drifts){d.update();d.draw(K);}
+  ctx.globalAlpha=1;
+
+  /* soft bloom that flares with every heartbeat */
+  const bl=K*(0.30+0.32*(pulse-1)/0.06);
+  const grR=Math.max(90, sc*7*pulse);
+  const bloom=ctx.createRadialGradient(CX(),CY(),0,CX(),CY(),grR);
+  bloom.addColorStop(0,`rgba(255,70,140,${Math.min(1,0.30*bl)})`);
+  bloom.addColorStop(0.6,`rgba(255,60,130,${Math.min(1,0.09*bl)})`);
+  bloom.addColorStop(1,'rgba(255,60,130,0)');
+  ctx.fillStyle=bloom;
+  ctx.fillRect(CX()-grR,CY()-grR,grR*2,grR*2);
+
+  drawGlow(K,tt,lc);
+  drawRings(K,tt,sc);
+
+  if(K>0.01){
+    for(const p of particles){
+      if(p.state==='idle' && tt>FLY+p.arrDelay){ p.startFlight(nowt,sc); }
+      if(p.state==='land' && tt>LEAVE+p.leaveOff){ p.startLeave(nowt); }
+      p.update(nowt,pulse,sc);
+      p.draw(nowt,K,pulse,gr);
+    }
+    updateConfetti(K);
+    for(const c of comets){c.update();c.draw(K);}
+    for(const o of orbiters){o.update();o.draw(K);}
+    for(const s of sparkles){s.update();s.draw(K);}
+    for(const r of risers){r.update();r.draw(K);}
+    drawAmbient(tt,K);
+    drawTitle(tt,K,pulse,lc);
+  }
+  drawSignature(tt);
+  ctx.globalAlpha=1;
+  ctx.globalCompositeOperation='source-over';
+}
+
+/* ---- Editor typing ---- */
+const edLines=document.getElementById('ed-lines');
+const consol=document.getElementById('consol');
+const editor=document.getElementById('editor');
+const footer=document.getElementById('footer');
+const growbadge=document.getElementById('growbadge');
+let edShown=false,footShown=false,growShown=false;
+
+const codeLines=[
+  ["import turtle",0.30],
+  ["import math, random, time",0.70],
+  ["",1.20],
+  ["#  \u2665  aneeba heart engine  \u2665",1.55],
+  ["screen = turtle.Screen()",2.15],
+  ["screen.setup(1720, 950)",2.65],
+  ["screen.bgcolor('#0b0b0f')",3.15],
+  ["screen.title('ANEEBA')",3.60],
+  ["screen.tracer(0)",4.10],
+  ["",4.60],
+  ["def heart(t, scale):",5.00],
+  ["    x = 16*scale*math.sin(t)**3",5.40],
+  ["    y = scale*(13*math.cos(t)",5.80],
+  ["              - 5*math.cos(2*t) - 2*math.cos(3*t)",6.20],
+  ["              - math.cos(4*t))",6.60],
+  ["    return x, y",7.10],
+  ["",7.60],
+  ["words = [Word(t, 20.3) for t in walk()]",8.00],
+  ["stars = [Star(t, 20.3) for t in walk()]",8.50],
+  ["",9.10],
+  ["while flying:",9.50],
+  ["    now = time.time()",10.10],
+  ["    for s in stars:  s.update(now, beat())",10.70],
+  ["    for w in words:  w.draw(pen)",11.40],
+  ["    screen.update()",12.10],
+  ["",12.70],
+  ["#  heartbeat 84 bpm  +  glow \u2665",13.20],
+  ["screen.mainloop()",13.80],
+  ["",14.30],
+];
+const CPS=80;
+const KW=new Set(["import","from","def","return","for","while","if","else","elif","in",
+  "as","not","and","or","True","False","None","class","with","pass","lambda","global","print","break"]);
+const MOD=new Set(["screen","pen","turtle","math","random","time","Particle","Sparkle",
+  "Comet","Orbiter","Word","Star","heart","walk"]);
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function hl(lineText){
+  let out='';let i=0;const n=lineText.length;
+  while(i<n){
+    const c=lineText[i];
+    if(c==='#'){out+='<span class="com">'+esc(lineText.slice(i))+'</span>';break;}
+    if(c==='"'||c==="'"){let j=i+1,q=c;
+      while(j<n){if(lineText[j]==='\\'){j+=2;continue;}if(lineText[j]===q){j++;break;}j++;}
+      out+='<span class="str">'+esc(lineText.slice(i,j))+'</span>';i=j;continue;}
+    if(/[0-9]/.test(c)){let j=i;
+      while(j<n&&/[0-9.]/.test(lineText[j]))j++;
+      out+='<span class="num">'+esc(lineText.slice(i,j))+'</span>';i=j;continue;}
+    if(/[A-Za-z_]/.test(c)){let j=i;
+      while(j<n&&/[\w]/.test(lineText[j]))j++;
+      const w=lineText.slice(i,j);
+      const prev=(lineText.slice(0,i).trim().split(/\s+/).pop()||'');
+      let cls='';
+      if(KW.has(w))cls='kw';
+      else if(prev==='def')cls='fun';
+      else if(prev==='import'||prev==='from')cls='mod';
+      else if(MOD.has(w))cls='mod';
+      out+='<span class="'+(cls||'')+'">'+esc(w)+'</span>';i=j;continue;}
+    out+=esc(c);i++;
+  }
+  return out;
+}
+const consolMsgs=[
+  [1.30,"~ python3 aneeba_heart.py",false],
+  [2.40,">> boot  0.58s  ok",true],
+  [4.80,">> spawning words + stars ...",true],
+  [6.80,">> particles flying into place",true],
+  [9.00,">> heart assembled  \u2665",true],
+  [10.40,">> heartbeat engaged  84 bpm",true],
+  [12.90,">> glow shaders active",true],
+  [16.40,">> fade-out sequence",true],
+];
+function updateEditor(nowt,lc){
+  if(nowt>0.5 && !edShown){edShown=true;editor.classList.add('show');}
+  if(nowt>LOAD_DUR+9.2 && !footShown){footShown=true;footer.classList.add('show');}
+  if(lc>0 && !growShown){growShown=true;growbadge.classList.add('show');
+    const gr=heartScale(lc)/(Math.min(W,H)*0.02);
+    growbadge.textContent='growing heart \u00b7 loop '+lc+' \u00b7 '+gr.toFixed(2)+'x';}
+  let html='';
+  for(let idx=0;idx<codeLines.length;idx++){
+    const [txt,st]=codeLines[idx];
+    let want=0;
+    if(lc>0 || nowt>=st){
+      want=(lc>0)?txt.length:Math.min(txt.length,Math.round(Math.max(0,nowt-st)*CPS));
+    }
+    const active=(want<txt.length);
+    html+='<div class="ln'+(active?' active':'')+'"><span class="gutter">'+(idx+1)+'</span><span class="txt">';
+    if(want>0){
+      html+=hl(txt.slice(0,want));
+      if(active) html+='<span class="cursor"></span>';
+    }
+    html+='</span></div>';
+  }
+  edLines.innerHTML=html;
+  let chtml='';let shownLines=[];
+  for(const [t,m,g] of consolMsgs) if(nowt>=t) shownLines.push([m,g]);
+  shownLines=shownLines.slice(-8);
+  for(const [m,g] of shownLines) chtml+='<div class="conline'+(g?' g':'')+'">'+m+'</div>';
+  consol.innerHTML=chtml;
+}
+
+let lastLc=-1;
+function frame(){
+  const nw=now();
+  if(nw<LOAD_DUR){
+    drawLoading(nw/LOAD_DUR);
+    updateEditor(nw,0);
+    requestAnimationFrame(frame);
+    return;
+  }
+  const tt=ttNow(),lc=loopCount();
+  if(lc!==lastLc){
+    lastLc=lc;
+    buildParticles(lc);
+    for(const p of particles){p.reset();p.arrDelay=Math.random()*2.4;p.arrDur=0.8+Math.random()*0.9;}
+  }
+  if(!burstDone[lc] && tt>BURST_T){burstDone[lc]=true;spawnConfetti();}
+  const K=gFade(tt);
+  draw(nw,tt,lc,K);
+  updateEditor(nw,lc);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
