@@ -490,10 +490,10 @@ class Riser{   /* little hearts floating up */
     ctx.globalAlpha=1;
   }
 }
-for(let i=0;i<IS_TOUCH?60:110;i++)sparkles.push(new Sparkle());
-for(let i=0;i<IS_TOUCH?18:36;i++)drifts.push(new Drift());
-for(let i=0;i<IS_TOUCH?2:3;i++)comets.push(new Comet());
-for(let i=0;i<IS_TOUCH?3:5;i++)orbiters.push(new Orbiter());
+for(let i=0;i<(IS_TOUCH?60:110);i++)sparkles.push(new Sparkle());
+for(let i=0;i<(IS_TOUCH?18:36);i++)drifts.push(new Drift());
+for(let i=0;i<(IS_TOUCH?2:3);i++)comets.push(new Comet());
+for(let i=0;i<(IS_TOUCH?3:5);i++)orbiters.push(new Orbiter());
 for(let i=0;i<5;i++)risers.push(new Riser());
 
 function spawnConfetti(){
