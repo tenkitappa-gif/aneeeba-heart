@@ -138,9 +138,10 @@
 
 <script>
 "use strict";
+const IS_TOUCH=('ontouchstart' in window)||(navigator.maxTouchPoints||0)>0;
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const DPR = Math.min(2, window.devicePixelRatio||1);
+const DPR = Math.min(IS_TOUCH?1.5:2, window.devicePixelRatio||1);
 let W=0,H=0;
 function sizeStage(){
   const st = document.getElementById('stage');
@@ -188,11 +189,11 @@ function heartPt(t, sc){
   return [x*sc, -y*sc];            /* -y  ->  upright on canvas */
 }
 function heartGrow(lc){
-  return 1 + Math.min(0.55, lc*0.05);
+  return 1 + Math.min(IS_TOUCH?0.38:0.55, lc*0.05);
 }
 function heartScale(lc){
-  const base=Math.min(W,H)*0.016;
-  return Math.min(base, W*0.028, H*0.038)*heartGrow(lc);   /* never clip off-screen */
+  const base=Math.min(W,H)*(IS_TOUCH?0.013:0.016);
+  return Math.min(base, W*0.026, H*0.034)*heartGrow(lc);   /* never clip off-screen */
 }
 
 const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
@@ -379,6 +380,7 @@ function pickKind(){
   return "dash";
 }
 function particleCount(gr){
+  if(IS_TOUCH) return Math.round(330 + 170*(gr-1)/(IS_TOUCH?0.38:0.55)) + 15*((Math.random()*3)|0);
   return Math.round(560 + 330*(gr-1)/0.55) + 20*((Math.random()*3)|0);
 }
 let heartPts=[]; const particles=[];
@@ -488,11 +490,11 @@ class Riser{   /* little hearts floating up */
     ctx.globalAlpha=1;
   }
 }
-for(let i=0;i<110;i++)sparkles.push(new Sparkle());
-for(let i=0;i<36;i++)drifts.push(new Drift());
-for(let i=0;i<3;i++)comets.push(new Comet());
-for(let i=0;i<5;i++)orbiters.push(new Orbiter());
-for(let i=0;i<6;i++)risers.push(new Riser());
+for(let i=0;i<IS_TOUCH?60:110;i++)sparkles.push(new Sparkle());
+for(let i=0;i<IS_TOUCH?18:36;i++)drifts.push(new Drift());
+for(let i=0;i<IS_TOUCH?2:3;i++)comets.push(new Comet());
+for(let i=0;i<IS_TOUCH?3:5;i++)orbiters.push(new Orbiter());
+for(let i=0;i<5;i++)risers.push(new Riser());
 
 function spawnConfetti(){
   for(let i=0;i<70;i++){
@@ -534,18 +536,20 @@ function drawGlow(K,tt,lc){
                [1.42,40,1,[18,5,36]],
                [1.62,28,0.8,[10,4,23]]];
   for(const [mult,n,dot,col] of rings){
-    const sc2=sc*mult*pulse, step=2*Math.PI/n;
+    const n2=IS_TOUCH?Math.max(12,n>>1):n;
+    const sc2=sc*mult*pulse, step=2*Math.PI/n2;
     const m=boost*(1-(mult-1.03)*0.34);
     ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${m})`;
-    for(let i=0;i<n;i++){
+    for(let i=0;i<n2;i++){
       const au=i*step; const [x,y]=heartPt(au,sc2);
       ctx.beginPath();ctx.arc(CX()+x,CY()+y,(dot/2),0,6.2832);ctx.fill();
     }
   }
   const bl=K*(0.45+0.30*(pulse-1)/0.06);
   ctx.fillStyle=`rgba(12,4,22,${bl})`;
-  for(let i=0;i<90;i++){
-    const t=2*Math.PI*i/90; const [x,y]=heartPt(t,sc*1.05*pulse);
+  const nCore=IS_TOUCH?52:90;
+  for(let i=0;i<nCore;i++){
+    const t=2*Math.PI*i/nCore; const [x,y]=heartPt(t,sc*1.05*pulse);
     for(const k of [1,-1]){
       ctx.fillRect(CX()+x, CY()+y+k*sc*0.16, 1.5, 1.5);
     }
@@ -557,7 +561,8 @@ function drawRings(K,tt,sc){
   const pulse=beat(tt);
   const a0=now()*0.5, a1=-now()*0.33;
   for(const [rad,stepLen,alpha,count] of
-      [[18.2,0.5,0.16,70],[21.0,0.9,0.10,46]]){
+      IS_TOUCH?[[16.8,0.5,0.12,36],[19.6,0.9,0.08,24]]:
+               [[18.2,0.5,0.16,70],[21.0,0.9,0.10,46]]){
     const rx=sc*rad*pulse, ry=sc*rad*0.52*pulse;
     for(let i=0;i<count;i++){
       const pa=(i/count)*6.2832 + (stepLen>0.6?a1:a0);
